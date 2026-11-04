@@ -14,7 +14,11 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) if (QByteArray(argv[i]) == "--window" || QByteArray(argv[i]) == "--demo") normal = true;
     // Read the saved mode before creating QApplication: Wayland chooses its shell integration at startup.
     QString preliminaryProfile;
-    for (int i = 1; i + 1 < argc; ++i) if (QByteArray(argv[i]) == "--profile") preliminaryProfile = QString::fromLocal8Bit(argv[i + 1]);
+    for (int i = 1; i < argc; ++i) {
+        const QByteArray argument(argv[i]);
+        if (argument == "--profile" && i + 1 < argc) preliminaryProfile = QString::fromLocal8Bit(argv[++i]);
+        else if (argument.startsWith("--profile=")) preliminaryProfile = QString::fromLocal8Bit(argument.mid(10));
+    }
     if (preliminaryProfile.isEmpty()) {
 #ifdef Q_OS_WIN
         preliminaryProfile = qEnvironmentVariable("LOCALAPPDATA") + "/desktop-tasks";
@@ -24,6 +28,10 @@ int main(int argc, char **argv) {
     }
     QSettings preliminary(QDir(preliminaryProfile).absoluteFilePath("settings.ini"), QSettings::IniFormat);
     initializeDesktopShell(!normal && preliminary.value("desktop", true).toBool());
+    #ifndef Q_OS_WIN
+    // Widgets are raster-painted: loading Mesa/LLVM just for unused GL adds tens of MiB.
+    if (!qEnvironmentVariableIsSet("QT_XCB_GL_INTEGRATION")) qputenv("QT_XCB_GL_INTEGRATION", "none");
+#endif
     QApplication app(argc, argv);
     app.setApplicationName("desktop-tasks"); app.setApplicationVersion("0.1.0");
     QCommandLineParser parser; parser.setApplicationDescription("Native Google Tasks desktop widget"); parser.addHelpOption(); parser.addVersionOption();

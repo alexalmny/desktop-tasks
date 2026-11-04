@@ -62,7 +62,7 @@ bool attachToDesktop(QWidget *widget, bool desktop, int x, int y) {
     if (QGuiApplication::platformName().startsWith("wayland")) {
         auto *layer = LayerShellQt::Window::get(widget->windowHandle());
         layer->setLayer(LayerShellQt::Window::LayerBottom);
-        layer->setAnchors(LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorLeft);
+        layer->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop) | LayerShellQt::Window::AnchorLeft);
         layer->setExclusiveZone(-1);
         layer->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityOnDemand);
         layer->setScope("desktop-tasks");

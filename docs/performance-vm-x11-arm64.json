@@ -1,0 +1,14 @@
+{
+  "os": "Linux-6.8.0-1062-oracle-aarch64-with-glibc2.35",
+  "architecture": "aarch64",
+  "scenario": "100 synthetic cached tasks; no Google connection; after 3 s warmup",
+  "qt_platform": "xcb",
+  "sample_seconds": 15.002066698041745,
+  "idle_cpu_seconds": 0.0,
+  "idle_cpu_percent_one_core": 0.0,
+  "rss_bytes": 83468288,
+  "peak_rss_bytes": 83468288,
+  "pss_bytes": 56361984,
+  "private_bytes": 34930688,
+  "executable_bytes": 305520
+}

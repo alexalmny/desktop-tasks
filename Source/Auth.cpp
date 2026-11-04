@@ -8,7 +8,11 @@
 #include <QSaveFile>
 #include <QTcpSocket>
 #include <QUrlQuery>
+#ifdef Q_OS_WIN
+#include <qtkeychain/keychain.h>
+#else
 #include <qt6keychain/keychain.h>
+#endif
 
 static QByteArray randomToken() {
     QByteArray bytes(32, Qt::Uninitialized);
