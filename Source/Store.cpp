@@ -115,7 +115,8 @@ bool Store::snapshot(const QJsonArray &ls, const QJsonArray &remote) {
 bool Store::acknowledge(const QJsonObject &sent, QJsonObject result) {
     const auto previous = data;
     auto ops = outbox(); auto ts = tasks();
-    result["list"] = sent["list"];
+    result = {{"id", result["id"]}, {"list", sent["list"]}, {"title", result["title"]},
+              {"status", result["status"]}, {"parent", result["parent"]}, {"position", result["position"]}};
     if (result["id"].toString().isEmpty()) return false;
     for (int i = ops.size() - 1; i >= 0; --i) {
         auto op = ops[i].toObject();

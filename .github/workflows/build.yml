@@ -26,15 +26,18 @@ jobs:
         run: QT_QPA_PLATFORM=offscreen build/desktop-tasks --demo --quit-after 2 --screenshot widget-linux.png
       - name: Measure process on Linux CI (synthetic cache, no OAuth)
         run: python3 scripts/measure.py build/desktop-tasks --output performance-linux.json
-      - name: Build Debian package
-        run: cd build && cpack -G DEB
+      - name: Build and smoke-test the actual Debian package
+        run: |
+          (cd build && cpack -G DEB)
+          mkdir -p dist package
+          cp build/*.deb widget-linux.png performance-linux.json dist/
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --extract dist/*.deb package/
+          QT_QPA_PLATFORM=offscreen package/usr/bin/desktop-tasks --demo --quit-after 2
       - uses: actions/upload-artifact@v4
         with:
           name: Desktop-Tasks-Linux-x64
-          path: |
-            build/*.deb
-            widget-linux.png
-            performance-linux.json
+          path: dist/
           if-no-files-found: error
       - name: Sanitizers
         run: |
@@ -73,8 +76,11 @@ jobs:
           Copy-Item README.md,LICENSE,THIRD_PARTY_NOTICES.md package/
           Copy-Item docs package/ -Recurse
           New-Item -ItemType Directory package/licenses -Force
-          Invoke-WebRequest https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES/LGPL-3.0-only.txt -OutFile package/licenses/LGPL-3.0.txt
-          Invoke-WebRequest https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES/GPL-3.0-only.txt -OutFile package/licenses/GPL-3.0.txt
+          git clone --depth 1 --filter=blob:none --sparse --branch v6.8.3 https://github.com/qt/qtbase.git build/qtbase-licenses
+          if ($LASTEXITCODE -ne 0) { throw 'Qt license checkout failed' }
+          git -C build/qtbase-licenses sparse-checkout set LICENSES
+          if ($LASTEXITCODE -ne 0) { throw 'Qt license retrieval failed' }
+          Copy-Item build/qtbase-licenses/LICENSES package/licenses/Qt -Recurse
           Copy-Item build/_deps/qtkeychain-src/COPYING package/licenses/QtKeychain.txt
       - name: Native Windows GUI smoke test and real process measurement
         shell: pwsh
@@ -102,14 +108,13 @@ jobs:
           if (!(Test-Path widget-windows.png)) { throw 'No rendered screenshot' }
       - name: Package tested Windows bundle
         shell: pwsh
-        run: Compress-Archive -Path package/* -DestinationPath dist/Desktop-Tasks-Windows-x64.zip
+        run: |
+          Compress-Archive -Path package/* -DestinationPath dist/Desktop-Tasks-Windows-x64.zip
+          Copy-Item widget-windows.png,performance-windows.json dist/
       - uses: actions/upload-artifact@v4
         with:
           name: Desktop-Tasks-Windows-x64
-          path: |
-            dist/*.zip
-            widget-windows.png
-            performance-windows.json
+          path: dist/
           if-no-files-found: error
   release:
     if: github.event_name == 'push' && github.ref_type == 'tag'

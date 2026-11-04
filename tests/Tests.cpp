@@ -88,6 +88,14 @@ private slots:
         s.setCompleted("l", "t", false); QVERIFY(s.acknowledge(op, task("t", "completed")));
         QCOMPARE(s.outbox().size(), 1); QCOMPARE(s.tasks()[0].toObject()["status"].toString(), QString("needsAction"));
     }
+    void acknowledgementDoesNotCacheNotes() {
+        QTemporaryDir dir; const auto path = dir.filePath("cache.json"); Store s(path);
+        QVERIFY(s.snapshot(lists(), {task()})); QVERIFY(s.setCompleted("l", "t", true));
+        auto response = task("t", "completed"); response["notes"] = "private notes"; response["selfLink"] = "unused";
+        QVERIFY(s.acknowledge(s.outbox()[0].toObject(), response));
+        QVERIFY(!s.tasks()[0].toObject().contains("notes")); QVERIFY(!s.tasks()[0].toObject().contains("selfLink"));
+        QFile file(path); QVERIFY(file.open(QIODevice::ReadOnly)); QVERIFY(!file.readAll().contains("private notes"));
+    }
     void corruptCacheIsNotOverwritten() {
         QTemporaryDir dir; QFile file(dir.filePath("cache.json")); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("bad JSON"); file.close();
         Store s(file.fileName()); QVERIFY(!s.ready()); QVERIFY(!s.add("l", "test"));
