@@ -1,0 +1,10 @@
+/build*/
+/dist/
+/package/
+/private/
+__pycache__/
+*.user
+*client_secret*.json
+oauth-client.json
+cache.json
+settings.ini

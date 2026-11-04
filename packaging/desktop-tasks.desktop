@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Desktop Tasks
+Comment=Google Tasks on your desktop
+Exec=desktop-tasks
+Icon=view-task
+Terminal=false
+Categories=Office;Utility;
+StartupNotify=false

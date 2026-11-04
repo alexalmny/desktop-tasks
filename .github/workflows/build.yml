@@ -1,0 +1,139 @@
+name: Build, test and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev qtkeychain-qt6-dev libxcb1-dev liblayershellqtinterface-dev qt6-wayland layer-shell-qt ninja-build
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --parallel 2
+      - run: ctest --test-dir build --output-on-failure
+      - run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Render real widgets without a desktop compositor
+        run: QT_QPA_PLATFORM=offscreen build/desktop-tasks --demo --quit-after 2 --screenshot widget-linux.png
+      - name: Measure process on Linux CI (synthetic cache, no OAuth)
+        run: python3 scripts/measure.py build/desktop-tasks --output performance-linux.json
+      - name: Build Debian package
+        run: cd build && cpack -G DEB
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Desktop-Tasks-Linux-x64
+          path: |
+            build/*.deb
+            widget-linux.png
+            performance-linux.json
+          if-no-files-found: error
+      - name: Sanitizers
+        run: |
+          cmake -S . -B build-sanitized -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer'
+          cmake --build build-sanitized --parallel 2
+          ASAN_OPTIONS=detect_leaks=0 ctest --test-dir build-sanitized --output-on-failure
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
+      - run: cmake -S . -B build -A x64 -DBUILD_TESTING=ON
+      - run: cmake --build build --config Release --parallel 2
+      - name: Tests on native Windows Server 2022 (not Windows 10)
+        shell: pwsh
+        run: |
+          $env:PATH = "$pwd\build\bin\Release;$env:PATH"
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+      - name: Bundle dynamic libraries and licenses
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory package,dist -Force
+          Copy-Item build/Release/desktop-tasks.exe package/
+          Copy-Item build/bin/Release/qt6keychain.dll package/
+          windeployqt --release --no-translations --no-opengl-sw --skip-plugin-types imageformats,iconengines,networkinformation package/desktop-tasks.exe
+          if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
+          Copy-Item README.md,LICENSE,THIRD_PARTY_NOTICES.md package/
+          Copy-Item docs package/ -Recurse
+          New-Item -ItemType Directory package/licenses -Force
+          Invoke-WebRequest https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES/LGPL-3.0-only.txt -OutFile package/licenses/LGPL-3.0.txt
+          Invoke-WebRequest https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES/GPL-3.0-only.txt -OutFile package/licenses/GPL-3.0.txt
+          Copy-Item build/_deps/qtkeychain-src/COPYING package/licenses/QtKeychain.txt
+      - name: Native Windows GUI smoke test and real process measurement
+        shell: pwsh
+        run: |
+          $p = Start-Process "$pwd/package/desktop-tasks.exe" -ArgumentList '--demo --quit-after 25 --screenshot widget-windows.png' -PassThru
+          Start-Sleep -Seconds 3
+          $p.Refresh()
+          if ($p.HasExited) { throw 'GUI exited prematurely' }
+          $cpu0 = $p.TotalProcessorTime.TotalSeconds
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          Start-Sleep -Seconds 15
+          $p.Refresh()
+          $measurement = @{
+            os = [Environment]::OSVersion.VersionString
+            framework = 'Qt 6.8.3 / MSVC2022 / x64'
+            scenario = '100 synthetic cached tasks; no Google connection; native CI desktop, not Windows 10'
+            working_set_bytes = $p.WorkingSet64
+            private_bytes = $p.PrivateMemorySize64
+            sample_seconds = $watch.Elapsed.TotalSeconds
+            idle_cpu_percent_one_core = 100 * ($p.TotalProcessorTime.TotalSeconds - $cpu0) / $watch.Elapsed.TotalSeconds
+          }
+          $measurement | ConvertTo-Json | Out-File performance-windows.json -Encoding utf8
+          $p.WaitForExit()
+          if ($p.ExitCode -ne 0) { throw 'GUI smoke test failed' }
+          if (!(Test-Path widget-windows.png)) { throw 'No rendered screenshot' }
+      - name: Package tested Windows bundle
+        shell: pwsh
+        run: Compress-Archive -Path package/* -DestinationPath dist/Desktop-Tasks-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Desktop-Tasks-Windows-x64
+          path: |
+            dist/*.zip
+            widget-windows.png
+            performance-windows.json
+          if-no-files-found: error
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Desktop-Tasks-*
+          merge-multiple: true
+          path: dist
+      - name: Include corresponding library sources and license texts
+        run: |
+          curl --fail --location --retry 3 https://download.qt.io/archive/qt/6.8/6.8.3/submodules/qtbase-everywhere-src-6.8.3.tar.xz -o dist/qtbase-everywhere-src-6.8.3.tar.xz
+          curl --fail --location --retry 3 https://codeload.github.com/frankosterfeld/qtkeychain/tar.gz/ad7344c45a86a4f66cbafc4b081b5f7b876cb0b7 -o dist/qtkeychain-0.15.0.tar.gz
+          echo '80774d512a4663093518c2b0185ef2676b067a0a8b7f8a4fbeab475631276d7b  dist/qtkeychain-0.15.0.tar.gz' | sha256sum --check
+          git archive --format=tar.gz --prefix=desktop-tasks/ HEAD > dist/desktop-tasks-source.tar.gz
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+      - name: Publish tested preview artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --verify-tag --prerelease --title "Desktop Tasks $TAG" --notes-file docs/RELEASE.md
