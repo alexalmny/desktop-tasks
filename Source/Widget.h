@@ -43,6 +43,7 @@ private:
     QTimer timer;
     bool desktop, waitingAuth = false;
     int failures = 0;
+    QDateTime retryNotBefore;
     void render();
     void message(const QString &text);
     void sync();

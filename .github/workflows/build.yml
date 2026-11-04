@@ -66,6 +66,8 @@ jobs:
           New-Item -ItemType Directory package,dist -Force
           Copy-Item build/Release/desktop-tasks.exe package/
           Copy-Item build/bin/Release/qt6keychain.dll package/
+          # windeployqt resolves all Qt6-prefixed DLLs from Qt's bin directory.
+          Copy-Item build/bin/Release/qt6keychain.dll "$env:QT_ROOT_DIR/bin/"
           windeployqt --release --no-translations --no-opengl-sw --skip-plugin-types imageformats,iconengines,networkinformation package/desktop-tasks.exe
           if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
           Copy-Item README.md,LICENSE,THIRD_PARTY_NOTICES.md package/

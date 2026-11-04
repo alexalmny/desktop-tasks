@@ -107,12 +107,12 @@ Widget::Widget(const QString &dir, bool normalWindow, bool demo)
     menu->addAction(tr("Réessayer les ajouts incertains…"), this, [this] {
         if (api.running()) { message(tr("Attendez la fin de la synchronisation.")); return; }
         if (QMessageBox::warning(nullptr, tr("Risque de doublon"), tr("Vérifiez d’abord Google Tasks. Une réponse perdue peut cacher un ajout déjà réussi. Réessayer tous les ajouts incertains ?"), QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
-            if (cache.retryUncertain()) sync();
+            if (!api.running() && cache.retryUncertain()) sync();
     });
     menu->addAction(tr("Abandonner les modifications en attente…"), this, [this] {
         if (api.running()) { message(tr("Attendez la fin de la synchronisation.")); return; }
         if (QMessageBox::warning(nullptr, tr("Abandon des modifications locales"), tr("Supprimer tous les ajouts et changements non synchronisés de ce profil ? Les tâches présentes sur Google ne seront pas supprimées. Les ajouts purement locaux seront perdus."), QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
-            if (cache.discardPending()) sync();
+            if (!api.running() && cache.discardPending()) sync();
     });
     menu->addAction(tr("Ouvrir le dossier local"), this, [this] { QDesktopServices::openUrl(QUrl::fromLocalFile(directory)); });
     menu->addSeparator(); menu->addAction(tr("Quitter"), qApp, &QApplication::quit);
@@ -172,6 +172,8 @@ void Widget::message(const QString &text) {
 }
 void Widget::sync() {
     if (!cache.ready() || api.running() || waitingAuth) return;
+    const qint64 remaining = QDateTime::currentDateTimeUtc().msecsTo(retryNotBefore);
+    if (remaining > 0) { timer.start(int(qMin(remaining, qint64(86400000)))); return; }
     if (!auth.hasToken()) { message(tr("Connectez Google via le menu ⋮. Le cache reste disponible.")); return; }
     waitingAuth = true; auth.authorize();
 }
@@ -179,7 +181,9 @@ void Widget::schedule(bool success, int retryAfter) {
     failures = success ? 0 : qMin(failures + 1, 5);
     const int interval = qBound(30, settings.value("interval", 120).toInt(), 3600);
     const int delay = success ? interval : qMin(900, interval * (1 << failures));
-    timer.start(qMax(delay, retryAfter) * 1000);
+    const int seconds = qMax(delay, retryAfter);
+    retryNotBefore = success ? QDateTime() : QDateTime::currentDateTimeUtc().addSecs(seconds);
+    timer.start(seconds * 1000);
 }
 void Widget::showOnDesktop() {
     const int x = settings.value("x", 30).toInt(), y = settings.value("y", 50).toInt();

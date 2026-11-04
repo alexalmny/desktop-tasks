@@ -2,15 +2,17 @@
 
 ## VM ARM64 — exécuté, pas estimé
 
-Mesure Release GCC 11.3 / Qt **6.2.4**, Ubuntu 22.04 ARM64, noyau 6.8.0-1062-oracle. Véritable processus Qt Widgets, plugin `offscreen`, **100 tâches fictives en cache**, attente de 3 s puis échantillon de 15,015 s. Aucun jeton, compte Google, TLS ou compositeur de bureau. Résultat brut : [performance-vm-arm64.json](performance-vm-arm64.json).
+Mesure Release GCC 11.3 / Qt **6.2.4**, Ubuntu 22.04 ARM64, noyau 6.8.0-1062-oracle. Véritable processus Qt Widgets, plugin `offscreen`, **100 tâches fictives en cache**, attente de 3 s puis échantillon de 15,003 s. Aucun jeton, compte Google, TLS ou compositeur de bureau. Résultat brut : [performance-vm-arm64.json](performance-vm-arm64.json).
 
 | Mesure | Valeur |
 |---|---:|
-| RSS, pic RSS | 26,93 Mio |
-| PSS (mémoire partagée répartie) | 21,00 Mio |
+| RSS, pic RSS | 26,92 Mio |
+| PSS (mémoire partagée répartie) | 20,99 Mio |
 | Mémoire privée résidente | 19,88 Mio |
 | CPU au repos sur 15 s | 0 tick mesuré, soit 0,00 % d’un cœur à cette résolution |
-| Exécutable Release, non strippé | 298,4 Kio |
+| Exécutable Release, non strippé | 298,7 Kio |
+
+Sous **X11/Xvfb** avec le même exécutable et les mêmes 100 tâches : **30,38 Mio RSS**, **23,64 Mio PSS**, **22,00 Mio privés**, aucun tick CPU mesuré sur 15,015 s. [Résultat brut X11](performance-vm-x11-arm64.json). Aucun window manager ni Plasma n’est lancé. Le serveur X est exclu de la mesure. Le chargement GLX/Mesa inutile ajoutait environ 49 Mio RSS ; l’application désactive désormais l’intégration GL XCB puisqu’elle peint uniquement des widgets raster (surcharge explicite possible par variable d’environnement).
 
 RSS inclut les pages partagées de Qt ; PSS est une meilleure approximation du coût additionnel avec KDE qui charge déjà Qt. Ces valeurs **ne mesurent pas** une synchronisation Google réelle ou une session Plasma/Windows 10. Le CPU « 0 » signifie aucune unité de temps CPU comptabilisée dans l’intervalle, pas une promesse de consommation nulle.
 
@@ -32,7 +34,7 @@ Chaque build produit `performance-linux.json` et `performance-windows.json`, joi
 - Réponses Google simulées, pagination de listes/tâches, tâches masquées terminées, erreurs HTTP et Retry-After.
 - POST non rejoué par Qt après déconnexion, état incertain persistant avant envoi, absence de nouvelle tentative automatique après réponse perdue.
 - PKCE vecteur RFC7636, contrôle du callback/state et import du type de client OAuth.
-- Interface réelle avec 100 tâches fictives, rendu hors écran sur VM et natif Windows CI.
+- Interface réelle avec 100 tâches fictives, rendu hors écran/X11 sur VM et natif Windows CI ; tests GUI de coche clavier, ajout, filtre et signal de transfert entre colonnes. Le geste souris glisser-déposer complet n’est pas automatisé.
 - Parsers de mesures Python et sanitizers AddressSanitizer/UBSan sur Linux CI.
 
 ## Reste à valider manuellement
